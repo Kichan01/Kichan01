@@ -9,24 +9,29 @@ from path import Path
 
 path = Path("ModelNet10")
 
+//off 파일은 위에서부터  n_verts개의 줄이 있고, 그 아래 n_faces개의 줄이 있음 
+// verts 는 x,y,z 좌표로 구성. face는 f를 구성하는 v의 갯수, f를 구성하는 v의 순서-1들로 구성
+// ex) verts: -1 1 2 : 정점 좌표가  -1,1,2
+// face : 3 0 1 2: 3개의 정점으로 구성, 1,2,3번째 정점으로 구성
 def read_off(file):
-    if 'OFF' != file.readline().strip():
-        raise('Not a valid OFF header')
-    n_verts, n_faces, __ = tuple([int(s) for s in file.readline().strip().split(' ')])
-    verts = [[float(s) for s in file.readline().strip().split(' ')] for i_vert in range(n_verts)]
-    faces = [[int(s) for s in file.readline().strip().split(' ')][1:] for i_face in range(n_faces)]
+    if 'OFF' != file.readline().strip(): //첫 줄을 읽어 'OFF'로 시작하는지 확인 -> .off file 유효성 확인 
+        raise('Not a valid OFF header') 
+    n_verts, n_faces, __ = tuple([int(s) for s in file.readline().strip().split(' ')]) //verts: 정점 수, faces: 면의 수, ㅡㅡ: 무시할 열의 수
+    verts = [[float(s) for s in file.readline().strip().split(' ')] for i_vert in range(n_verts)] // 각 정점의 좌표를 리스트에 저장 이를 n_verts 줄만큼 반복. 즉 verts는 각 정점을 담은 list의 list가 됨
+    faces = [[int(s) for s in file.readline().strip().split(' ')][1:] for i_face in range(n_faces)] // 삼각형 면을 구성하는 정점의 인덱스를 담은 리스트의 리스트
     return verts, faces
     
-with open(path/"bed/train/bed_0001.off", 'r') as f:
+with open(path/"bed/train/bed_0001.off", 'r') as f: //.off함수를 읽어오고, read_off함수 실행 -> 정점과 면 정보를 mesh 변수에 저장
     mesh = read_off(f)
 
-verts, faces = mesh
-areas = np.zeros((len(faces)))
-verts = np.array(verts)
+//verts, faces로 이루어진 mesh에서 각 면의 면적 계산
+verts, faces = mesh //정점과 면들을 mesh에서 추출
+areas = np.zeros((len(faces))) //면의 개수와 동일한 길이를 가진 0으로 채워진 배열 생성 -> 각 면의 면적 저장을 위한 변수
+verts = np.array(verts) //verts 리스트를 Numpy 배열로 변환(계산을 효율적으로 하기 위해)
 
 # function to calculate triangle area by its vertices
 # https://en.wikipedia.org/wiki/Heron%27s_formula
-def triangle_area(pt1, pt2, pt3):
+def triangle_area(pt1, pt2, pt3): //세 개의 정점을 인수로 받아 삼각형의 면적 계산하는 함수
     side_a = np.linalg.norm(pt1 - pt2)
     side_b = np.linalg.norm(pt2 - pt3)
     side_c = np.linalg.norm(pt3 - pt1)
@@ -34,7 +39,7 @@ def triangle_area(pt1, pt2, pt3):
     return max(s * (s - side_a) * (s - side_b) * (s - side_c), 0)**0.5
 
 # we calculate areas of all faces in our mesh
-for i in range(len(areas)):
+for i in range(len(areas)): //
     areas[i] = (triangle_area(verts[faces[i][0]],
                               verts[faces[i][1]],
                               verts[faces[i][2]]))
