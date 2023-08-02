@@ -39,7 +39,7 @@ def triangle_area(pt1, pt2, pt3): //세 개의 정점을 인수로 받아 삼각
     return max(s * (s - side_a) * (s - side_b) * (s - side_c), 0)**0.5
 
 # we calculate areas of all faces in our mesh
-for i in range(len(areas)): //
+for i in range(len(areas)): //면의 면적 저장, 인수로 각 면의 x,y,z좌표 불러오기 
     areas[i] = (triangle_area(verts[faces[i][0]],
                               verts[faces[i][1]],
                               verts[faces[i][2]]))
@@ -48,34 +48,35 @@ k = 3000
 # we sample 'k' faces with probabilities proportional to their areas
 # weights are used to create a distribution.
 # they don't have to sum up to one.
-sampled_faces = (random.choices(faces, 
+sampled_faces = (random.choices(faces,  //면적에 비례하여 가중치를 사용하여 k개 면 샘플링
                                 weights=areas,
                                 k=k))
 
 # function to sample points on a triangle surface
-def sample_point(pt1, pt2, pt3):
+def sample_point(pt1, pt2, pt3): //삼각형의 내부에서 무작위로 점을 샘플링 
     # barycentric coordinates on a triangle
     # https://mathworld.wolfram.com/BarycentricCoordinates.html
     s, t = sorted([random.random(), random.random()])
     f = lambda i: s * pt1[i] + (t-s) * pt2[i] + (1-t) * pt3[i]
     return (f(0), f(1), f(2))
  
-pointcloud = np.zeros((k, 3))
+pointcloud = np.zeros((k, 3)) //크기가 k,3인 2차원 배열 생 
 
 # sample points on chosen faces for the point cloud of size 'k'
-for i in range(len(sampled_faces)):
+for i in range(len(sampled_faces)): //샘플링된 면들을 반복하여 각 면에서 점을 샘플링합니다. 
     pointcloud[i] = (sample_point(verts[sampled_faces[i][0]],
                                   verts[sampled_faces[i][1]],
                                   verts[sampled_faces[i][2]]))
 
 
+// 포인트 클라우드 정규화, Z축 기준으로 무작위로 회정, 가우시안 노이즈 추가 
 # normalize
-norm_pointcloud = pointcloud - np.mean(pointcloud, axis=0) 
-norm_pointcloud /= np.max(np.linalg.norm(norm_pointcloud, axis=1))
+norm_pointcloud = pointcloud - np.mean(pointcloud, axis=0) //정에서 평균값을 빼서 정규화함. 포인트 클라우드를 원점으로 이동
+norm_pointcloud /= np.max(np.linalg.norm(norm_pointcloud, axis=1)) //정규화된 포인트클라우드 점들을 단위구로 정규화. 포인트 클라우드의 크기를 일정한 범위로 조절
 
 # rotation around z-axis
 theta = random.random() * 2. * math.pi # rotation angle
-rot_matrix = np.array([[ math.cos(theta), -math.sin(theta),    0],
+rot_matrix = np.array([[ math.cos(theta), -math.sin(theta),    0], //theta를 이용하여 Z축을 기준으로 회전하는 3x3회전행렬 생성
                        [ math.sin(theta),  math.cos(theta),    0],
                        [0,                             0,      1]])
 
