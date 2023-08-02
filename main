@@ -1,0 +1,81 @@
+import numpy as np
+import random
+import math
+!pip install path.py;
+from path import Path
+
+!wget http://3dvision.princeton.edu/projects/2014/3DShapeNets/ModelNet10.zip
+!unzip -q ModelNet10.zip
+
+path = Path("ModelNet10")
+
+def read_off(file):
+    if 'OFF' != file.readline().strip():
+        raise('Not a valid OFF header')
+    n_verts, n_faces, __ = tuple([int(s) for s in file.readline().strip().split(' ')])
+    verts = [[float(s) for s in file.readline().strip().split(' ')] for i_vert in range(n_verts)]
+    faces = [[int(s) for s in file.readline().strip().split(' ')][1:] for i_face in range(n_faces)]
+    return verts, faces
+    
+with open(path/"bed/train/bed_0001.off", 'r') as f:
+    mesh = read_off(f)
+
+verts, faces = mesh
+areas = np.zeros((len(faces)))
+verts = np.array(verts)
+
+# function to calculate triangle area by its vertices
+# https://en.wikipedia.org/wiki/Heron%27s_formula
+def triangle_area(pt1, pt2, pt3):
+    side_a = np.linalg.norm(pt1 - pt2)
+    side_b = np.linalg.norm(pt2 - pt3)
+    side_c = np.linalg.norm(pt3 - pt1)
+    s = 0.5 * ( side_a + side_b + side_c)
+    return max(s * (s - side_a) * (s - side_b) * (s - side_c), 0)**0.5
+
+# we calculate areas of all faces in our mesh
+for i in range(len(areas)):
+    areas[i] = (triangle_area(verts[faces[i][0]],
+                              verts[faces[i][1]],
+                              verts[faces[i][2]]))
+
+k = 3000
+# we sample 'k' faces with probabilities proportional to their areas
+# weights are used to create a distribution.
+# they don't have to sum up to one.
+sampled_faces = (random.choices(faces, 
+                                weights=areas,
+                                k=k))
+
+# function to sample points on a triangle surface
+def sample_point(pt1, pt2, pt3):
+    # barycentric coordinates on a triangle
+    # https://mathworld.wolfram.com/BarycentricCoordinates.html
+    s, t = sorted([random.random(), random.random()])
+    f = lambda i: s * pt1[i] + (t-s) * pt2[i] + (1-t) * pt3[i]
+    return (f(0), f(1), f(2))
+ 
+pointcloud = np.zeros((k, 3))
+
+# sample points on chosen faces for the point cloud of size 'k'
+for i in range(len(sampled_faces)):
+    pointcloud[i] = (sample_point(verts[sampled_faces[i][0]],
+                                  verts[sampled_faces[i][1]],
+                                  verts[sampled_faces[i][2]]))
+
+
+# normalize
+norm_pointcloud = pointcloud - np.mean(pointcloud, axis=0) 
+norm_pointcloud /= np.max(np.linalg.norm(norm_pointcloud, axis=1))
+
+# rotation around z-axis
+theta = random.random() * 2. * math.pi # rotation angle
+rot_matrix = np.array([[ math.cos(theta), -math.sin(theta),    0],
+                       [ math.sin(theta),  math.cos(theta),    0],
+                       [0,                             0,      1]])
+
+rot_pointcloud = rot_matrix.dot(pointcloud.T).T
+
+# add some noise
+noise = np.random.normal(0, 0.02, (pointcloud.shape))
+noisy_pointcloud = rot_pointcloud + noise
