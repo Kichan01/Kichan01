@@ -89,6 +89,8 @@ noisy_pointcloud = rot_pointcloud + noise
 
 //T-Net class 정의하는 PyTorch 모듈
 //T-Net은 입력 포인트 클라우드에 대해 3x3 변환행렬을 예측하는 네트워크 구현
+//이미 전처리 단계에서 포인트 클라우드를 원점으로 이동시켰음
+//훈련을 시작할 때 변환 없이 학습을 진행하기 위해 기본적으로 이를 단위 행렬로 만들고자 함. 출력에 단위행렬을 더하기만 하면 됨
 
 import torch
 import torch.nn as nn
@@ -130,3 +132,36 @@ class Tnet(nn.Module):
       # add identity to the output //출력 + 항등행렬
       matrix = self.fc3(xb).view(-1,self.k,self.k) + init
       return matrix
+
+
+//추출된 포인트 특징을 MLP에 적용한 후, 동일한 64차원 T-Net을 사용하여 특징 정렬.
+//순열 불변성을 위해 추출된 변횐된 특징에 대해 대칭함수(Max pooling)적용
+
+class Transform(nn.Module):
+   def __init__(self):
+        super().__init__()
+        self.input_transform = Tnet(k=3) //초기화. 3x3 변환행렬 예측에 사용
+        self.feature_transform = Tnet(k=64)//64x64 변환행렬 예측에 사용 
+        self.conv1 = nn.Conv1d(3,64,1)//1차원 conv layer로 입력 포인트 클라우드 특성 변환
+
+        self.conv2 = nn.Conv1d(64,128,1)
+        self.conv3 = nn.Conv1d(128,1024,1)
+
+        self.bn1 = nn.BatchNorm1d(64) //정규화
+        self.bn2 = nn.BatchNorm1d(128)
+        self.bn3 = nn.BatchNorm1d(1024)
+       
+   def forward(self, input): //네트워크의 순방향 전달 정의. 3x3변환, conv+ batch정규화를 거쳐 처리. 이후 feature_transform을 통해 64x64 변환
+        matrix3x3 = self.input_transform(input) //3x3, 64x64 변환행렬은 변환 불변성과 순열 불변성을 제공하는 데 사용
+        # batch matrix multiplication
+        xb = torch.bmm(torch.transpose(input,1,2), matrix3x3).transpose(1,2)
+        xb = F.relu(self.bn1(self.conv1(xb)))
+
+        matrix64x64 = self.feature_transform(xb)
+        xb = torch.bmm(torch.transpose(xb,1,2), matrix64x64).transpose(1,2)
+
+        xb = F.relu(self.bn2(self.conv2(xb)))
+        xb = self.bn3(self.conv3(xb))
+        xb = nn.MaxPool1d(xb.size(-1))(xb)
+        output = nn.Flatten(1)(xb)
+        return output, matrix3x3, matrix64x64
